@@ -1,0 +1,7 @@
+# Twitter Automation Detection Test - Dependencies
+# For twitter_selenium_test.py
+
+# Selenium with Undetected Chrome (anti-detection)
+undetected-chromedriver>=3.5.4
+selenium>=4.15.0
+
