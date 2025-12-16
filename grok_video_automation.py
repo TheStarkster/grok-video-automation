@@ -79,11 +79,7 @@ class GrokVideoAutomation:
         
         # Test prompt
         self.test_prompts = [
-            "Make this image come to life",
-            "Add smooth motion to this scene",
-            "Create a dynamic video from this",
-            "Animate this image naturally",
-            "Bring movement to this picture"
+            "make him like superman"
         ]
         self.test_prompt = random.choice(self.test_prompts)
         print(f"🎲 Random test prompt: '{self.test_prompt}'")
@@ -148,7 +144,7 @@ class GrokVideoAutomation:
             # Simple approach: move to a safe blank area and click
             actions = ActionChains(self.driver)
             # Move to coordinates that are likely to be blank (right side, middle height)
-            actions.move_by_offset(800, 400).click().perform()
+            actions.move_by_offset(800, 1900).click().perform()
             
             # Reset the offset for future actions
             actions.move_by_offset(-800, -400).perform()
@@ -199,40 +195,178 @@ class GrokVideoAutomation:
             return False
     
     def click_edit_image_button(self):
-        """Click Edit Image button to enter editor"""
+        """Click on the uploaded image chip, then click Edit Image button in preview"""
         print("\n" + "="*60)
-        print("🖱️  PHASE 2: Clicking Edit Image Button")
+        print("🖱️  PHASE 2: Clicking Uploaded Image Chip")
         print("="*60)
         
         try:
-            time.sleep(2)
-            all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
+            # Wait for the chip to appear and become visible after upload
+            print("🔍 Waiting for uploaded image chip to appear...")
+            max_wait = 15  # Maximum 15 seconds
+            start_time = time.time()
+            chip_divs = []
             
-            for button in all_buttons:
-                text = button.text.strip()
-                aria_label = (button.get_attribute("aria-label") or "").strip()
+            while time.time() - start_time < max_wait:
+                chip_divs = self.driver.find_elements(By.CSS_SELECTOR, "[class*='group/chip'][class*='cursor-pointer']")
                 
-                if ("edit" in text.lower() and "image" in text.lower()) or (aria_label.lower() == "edit image"):
-                    if button.is_displayed():
-                        self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button)
+                # Check if any chip is visible
+                visible_chips = [chip for chip in chip_divs if chip.is_displayed()]
+                
+                if visible_chips:
+                    print(f"✅ Found {len(visible_chips)} visible chip(s)!")
+                    chip_divs = visible_chips
+                    break
+                
+                elapsed = int(time.time() - start_time)
+                if elapsed > 0 and elapsed % 3 == 0:
+                    print(f"   Still waiting... ({elapsed}s)")
+                
+                time.sleep(0.5)
+            
+            if not chip_divs:
+                print(f"❌ No visible chips found after {max_wait}s")
+                return False
+            
+            print(f"   Found {len(chip_divs)} chip component(s)")
+            
+            chip_clicked = False
+            for idx, chip in enumerate(chip_divs):
+                print(f"   Chip {idx+1}: Looking for image...")
+                
+                # Verify this chip contains an image with the correct URL pattern
+                try:
+                    img = chip.find_element(By.TAG_NAME, "img")
+                    src = img.get_attribute("src") or ""
+                    
+                    print(f"   Chip {idx+1}: Found image with src: {src}")
+                    
+                    # Check if it's an uploaded image (pattern ending with /content)
+                    if src.endswith("/content") or "content" in src:
+                        print(f"✅ Found uploaded image chip!")
+                        print(f"   Image src: {src[:70]}...")
+                        
+                        # Scroll chip into view
+                        self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", chip)
                         time.sleep(0.5)
                         
+                        # Try clicking the chip div (the clickable component)
                         try:
-                            button.click()
+                            chip.click()
+                            print("✅ Clicked image chip!")
+                            chip_clicked = True
+                            time.sleep(2)
+                            break
                         except:
-                            self.driver.execute_script("arguments[0].click();", button)
+                            pass
                         
-                        print("✅ Clicked Edit Image!")
-                        time.sleep(3)
-                        return True
+                        # Try JavaScript click on the chip
+                        try:
+                            self.driver.execute_script("arguments[0].click();", chip)
+                            print("✅ Clicked image chip (JS)!")
+                            chip_clicked = True
+                            time.sleep(2)
+                            break
+                        except:
+                            pass
+                        
+                        # Try clicking the figure element (direct parent of img)
+                        try:
+                            figure = chip.find_element(By.TAG_NAME, "figure")
+                            figure.click()
+                            print("✅ Clicked image figure!")
+                            chip_clicked = True
+                            time.sleep(2)
+                            break
+                        except:
+                            pass
+                        
+                        # Try clicking the image itself
+                        try:
+                            img.click()
+                            print("✅ Clicked image directly!")
+                            chip_clicked = True
+                            time.sleep(2)
+                            break
+                        except:
+                                        pass
+                        
+                except Exception as e:
+                    print(f"   Chip {idx+1}: Error checking image - {e}")
+                    continue
             
-            print("❌ Not found!")
+            if not chip_clicked:
+                print("⚠️  No uploaded image chip found with /content URL pattern")
+                print("🔄 Trying to click first visible chip as fallback...")
+                
+                # Fallback: try to click the first visible chip
+                if chip_divs:
+                    chip = chip_divs[0]
+                    try:
+                        self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", chip)
+                        time.sleep(0.5)
+                        self.driver.execute_script("arguments[0].click();", chip)
+                        print("✅ Clicked chip (fallback)!")
+                        chip_clicked = True
+                        time.sleep(2)
+                    except Exception as e:
+                        print(f"   Fallback click failed: {e}")
+                
+                if not chip_clicked:
+                    print("❌ No chip could be clicked!")
+                    return False
+            
+            # Now wait for and click the "Edit Image" button in the preview
+            print("\n🔍 Looking for 'Edit Image' button in preview...")
+            time.sleep(1)
+            
+            # Look for button with aria-label="Edit image" or text containing "Edit Image"
+            try:
+                # Try finding by aria-label
+                edit_buttons = self.driver.find_elements(By.CSS_SELECTOR, "button[aria-label*='Edit']")
+                
+                for button in edit_buttons:
+                    if button.is_displayed():
+                        aria_label = button.get_attribute("aria-label") or ""
+                        text = button.text or ""
+                        
+                        if "edit" in aria_label.lower() and "image" in aria_label.lower():
+                            print(f"✅ Found 'Edit Image' button!")
+                            
+                            # Scroll into view
+                            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button)
+                            time.sleep(0.5)
+                            
+                            # Try clicking
+                            try:
+                                button.click()
+                                print("✅ Clicked 'Edit Image' button!")
+                                time.sleep(3)
+                                return True
+                            except:
+                                pass
+                            
+                            # Try JS click
+                            try:
+                                self.driver.execute_script("arguments[0].click();", button)
+                                print("✅ Clicked 'Edit Image' button (JS)!")
+                                time.sleep(3)
+                                return True
+                            except:
+                                pass
+                
+                print("❌ 'Edit Image' button not found!")
+                return False
+            
+            except Exception as e:
+                print(f"❌ Error finding Edit Image button: {e}")
             return False
             
         except Exception as e:
             print(f"❌ Error: {e}")
+            import traceback
+            print(traceback.format_exc())
             return False
-    
     def click_make_video_button(self):
         """Click Make video button"""
         print("\n" + "="*60)
@@ -250,39 +384,91 @@ class GrokVideoAutomation:
             
             # Wait for Make video button to be clickable
             print("🔍 Waiting for Make video button...")
+            time.sleep(2)  # Give editor time to fully load
+            
+            # Try multiple strategies to find the button
+            button = None
+            
+            # Strategy 1: Try the known XPath
             try:
-                button = self.wait.until(EC.element_to_be_clickable(
-                    (By.XPATH, "/html/body/div[7]/div/footer/div/div/div[1]/button")
-                ))
-                
-                text = button.text.strip()
-                print(f"✅ Found: '{text}'")
-                self.make_video_button_found = True
-                self.make_video_button_text = text
-                
-                # Scroll and click
-                self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button)
-                time.sleep(0.3)
-                
-                # Try clicks
-                for method_name, click_func in [
-                    ("native", lambda: button.click()),
-                    ("ActionChains", lambda: ActionChains(self.driver).move_to_element(button).click().perform()),
-                    ("JavaScript", lambda: self.driver.execute_script("arguments[0].click();", button))
-                ]:
-                    try:
-                        click_func()
-                        print(f"✅ Clicked!")
-                        return True
-                    except:
-                        continue
-                
-                print("❌ All click methods failed!")
+                print("   Trying XPath...")
+                button = self.driver.find_element(By.XPATH, "/html/body/div[7]/div/footer/div/div/div[1]/button")
+                if button.is_displayed():
+                    print("   ✓ Found via XPath")
+            except:
+                pass
+            
+            # Strategy 2: Find buttons with "video" text
+            if not button:
+                print("   Searching for buttons with 'video' text...")
+                all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                for btn in all_buttons:
+                    if btn.is_displayed():
+                        text = btn.text.strip().lower()
+                        aria_label = (btn.get_attribute("aria-label") or "").lower()
+                        if "video" in text or "video" in aria_label:
+                            print(f"   ✓ Found button with text: '{btn.text.strip()}'")
+                            button = btn
+                            break
+            
+            # Strategy 3: Look in footer elements
+            if not button:
+                print("   Searching in footer elements...")
+                try:
+                    footers = self.driver.find_elements(By.TAG_NAME, "footer")
+                    for footer in footers:
+                        if footer.is_displayed():
+                            footer_buttons = footer.find_elements(By.TAG_NAME, "button")
+                            for btn in footer_buttons:
+                                if btn.is_displayed():
+                                    text = btn.text.strip().lower()
+                                    if "video" in text or "make" in text:
+                                        print(f"   ✓ Found in footer: '{btn.text.strip()}'")
+                                        button = btn
+                                        break
+                            if button:
+                                break
+                except:
+                    pass
+            
+            if not button:
+                print("❌ Make video button not found after trying all strategies!")
+                print("🔍 Debug: Listing all visible buttons...")
+                all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                visible_buttons = [b for b in all_buttons if b.is_displayed()]
+                print(f"   Found {len(visible_buttons)} visible buttons")
+                for i, btn in enumerate(visible_buttons[:10]):  # Show first 10
+                    text = btn.text.strip()[:50]
+                    aria = (btn.get_attribute("aria-label") or "")[:50]
+                    print(f"   Button {i+1}: text='{text}', aria='{aria}'")
                 return False
-                
-            except TimeoutException:
-                print("❌ Make video button not found!")
-                return False
+            
+            # Found button - now click it
+            text = button.text.strip()
+            print(f"✅ Found: '{text}'")
+            self.make_video_button_found = True
+            self.make_video_button_text = text
+            
+            # Scroll and click
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button)
+            time.sleep(0.5)
+            
+            # Try clicks
+            for method_name, click_func in [
+                ("JavaScript", lambda: self.driver.execute_script("arguments[0].click();", button)),
+                ("native", lambda: button.click()),
+                ("ActionChains", lambda: ActionChains(self.driver).move_to_element(button).click().perform())
+            ]:
+                try:
+                    click_func()
+                    print(f"✅ Clicked with {method_name}!")
+                    return True
+                except Exception as e:
+                    print(f"   {method_name} failed: {e}")
+                    continue
+            
+            print("❌ All click methods failed!")
+            return False
             
         except Exception as e:
             print(f"❌ Error: {e}")
