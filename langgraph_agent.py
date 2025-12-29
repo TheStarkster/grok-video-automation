@@ -130,6 +130,27 @@ AVAILABLE TOOLS (call ONE at a time):
    - Call when goal is achieved
    - Example: {"tool": "done", "reason": "Successfully clicked Imagine button"}
 
+8. upload_file(selector, file_path)
+   - Uploads a file to a file input element (works with hidden inputs)
+   - Use selector "auto" to auto-detect the file input element
+   - Example: {"tool": "upload_file", "selector": "auto", "file_path": "./test_image.png"}
+
+9. wait_for_element(selector, timeout, condition)
+   - Waits for an element to appear (for polling)
+   - condition: "visible", "present", or "clickable"
+   - timeout: seconds to wait (default: 30)
+   - Example: {"tool": "wait_for_element", "selector": "button[aria-label='Download']", "timeout": 60, "condition": "visible"}
+
+10. wait_for_text_change(selector, timeout)
+   - Waits for element text to change, especially for percentage completion (e.g., "37%" -> "100%" -> "Download")
+   - Monitors text and waits until it stops containing "%" symbol
+   - timeout: seconds to wait (default: 120)
+   - Example: {"tool": "wait_for_text_change", "selector": "button", "timeout": 120}
+
+11. get_element_text(selector)
+   - Gets the text content of an element
+   - Example: {"tool": "get_element_text", "selector": "button"}
+
 RESPONSE FORMAT:
 Return a JSON object with:
 {
@@ -141,6 +162,8 @@ IMPORTANT RULES:
 - Look at the clickable_elements list to find elements you can interact with
 - Use exact text matches when possible
 - If an element has aria-label, prefer click_by_aria_label
+- For file uploads: Use upload_file with selector "auto" - do NOT click upload buttons that open system dialogs
+- For video processing: Use wait_for_text_change to monitor percentage progress - do NOT click download until processing completes (text no longer contains "%")
 - After each action, you'll see if URL or screen changed
 - Call "done" when you see evidence the goal is achieved
 - Be efficient - don't repeat failed actions"""
@@ -220,6 +243,31 @@ IMPORTANT RULES:
         
         elif tool == "scroll":
             result = self.browser.scroll_page(tool_call.get('direction', 'down'))
+        
+        elif tool == "upload_file":
+            result = self.browser.upload_file(
+                tool_call.get('selector', ''),
+                tool_call.get('file_path', '')
+            )
+        
+        elif tool == "wait_for_element":
+            result = self.browser.wait_for_element(
+                tool_call.get('selector', ''),
+                tool_call.get('timeout', 30),
+                tool_call.get('condition', 'visible')
+            )
+        
+        elif tool == "wait_for_text_change":
+            result = self.browser.wait_for_text_change(
+                tool_call.get('selector', ''),
+                tool_call.get('initial_text', None),
+                tool_call.get('timeout', 120)
+            )
+        
+        elif tool == "get_element_text":
+            result = self.browser.get_element_text(
+                tool_call.get('selector', '')
+            )
         
         elif tool == "done":
             result = {

@@ -363,6 +363,185 @@ class DOMBrowser:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    def upload_file(self, selector: str, file_path: str) -> Dict[str, Any]:
+        """Upload a file to a file input element (works with hidden inputs)"""
+        try:
+            print(f"📤 Uploading file: {file_path}")
+            
+            # Validate file exists
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
+            
+            # Get absolute path
+            abs_file_path = str(file_path_obj.absolute())
+            
+            # If selector is "auto", find any file input on the page
+            if selector.lower() == "auto":
+                print("   🔍 Auto-detecting file input element...")
+                file_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='file']")
+                if not file_inputs:
+                    return {"success": False, "error": "No file input elements found on page"}
+                elem = file_inputs[0]  # Use the first one
+                print(f"   ✅ Found file input element")
+            else:
+                # Find the file input element by selector
+                if selector.startswith("//") or selector.startswith("/html"):
+                    elem = self.driver.find_element(By.XPATH, selector)
+                else:
+                    elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+            
+            # For hidden file inputs, make them visible temporarily
+            # This is a common workaround for modern web apps that hide file inputs
+            if not elem.is_displayed():
+                print("   📝 Note: File input is hidden, making it temporarily visible")
+                self.driver.execute_script(
+                    "arguments[0].style.display = 'block'; "
+                    "arguments[0].style.visibility = 'visible'; "
+                    "arguments[0].style.opacity = '1'; "
+                    "arguments[0].style.position = 'relative';",
+                    elem
+                )
+                time.sleep(0.2)
+            
+            # Upload the file
+            elem.send_keys(abs_file_path)
+            time.sleep(2)  # Wait for file to be processed
+            
+            return self._get_action_result("upload", f"Uploaded file: {file_path_obj.name}")
+            
+        except NoSuchElementException:
+            return {"success": False, "error": f"File input element not found: {selector[:50]}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def wait_for_element(self, selector: str, timeout: int = 30, condition: str = "visible") -> Dict[str, Any]:
+        """Wait for an element to appear/become visible"""
+        try:
+            print(f"⏳ Waiting for element: {selector[:50]}... (timeout: {timeout}s, condition: {condition})")
+            
+            # Create a wait instance with custom timeout
+            wait = WebDriverWait(self.driver, timeout)
+            
+            # Determine which condition to use
+            if selector.startswith("//") or selector.startswith("/html"):
+                by_method = By.XPATH
+            else:
+                by_method = By.CSS_SELECTOR
+            
+            if condition == "visible":
+                expected_condition = EC.visibility_of_element_located((by_method, selector))
+            elif condition == "present":
+                expected_condition = EC.presence_of_element_located((by_method, selector))
+            elif condition == "clickable":
+                expected_condition = EC.element_to_be_clickable((by_method, selector))
+            else:
+                expected_condition = EC.visibility_of_element_located((by_method, selector))
+            
+            # Wait for element
+            element = wait.until(expected_condition)
+            
+            time.sleep(0.5)  # Brief pause after element appears
+            return self._get_action_result("wait", f"Element appeared: {selector[:30]}", {
+                "element_found": True,
+                "timeout": timeout,
+                "condition": condition
+            })
+            
+        except TimeoutException:
+            return {
+                "success": False,
+                "error": f"Element did not appear within {timeout} seconds: {selector[:50]}",
+                "element_found": False,
+                "timeout": timeout,
+                "condition": condition
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def check_element_exists(self, selector: str) -> bool:
+        """Quick boolean check if element exists on page"""
+        try:
+            if selector.startswith("//") or selector.startswith("/html"):
+                self.driver.find_element(By.XPATH, selector)
+            else:
+                self.driver.find_element(By.CSS_SELECTOR, selector)
+            return True
+        except NoSuchElementException:
+            return False
+        except Exception:
+            return False
+    
+    def get_element_text(self, selector: str) -> Dict[str, Any]:
+        """Get text content of an element"""
+        try:
+            if selector.startswith("//") or selector.startswith("/html"):
+                elem = self.driver.find_element(By.XPATH, selector)
+            else:
+                elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+            
+            text = elem.text.strip()
+            return {
+                "success": True,
+                "text": text,
+                "selector": selector
+            }
+        except NoSuchElementException:
+            return {"success": False, "error": f"Element not found: {selector[:50]}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def wait_for_text_change(self, selector: str, initial_text: str = None, timeout: int = 120) -> Dict[str, Any]:
+        """Wait for an element's text to change from initial value or stop containing certain patterns"""
+        try:
+            print(f"⏳ Waiting for text change in: {selector[:50]}... (timeout: {timeout}s)")
+            
+            # Determine selector type
+            if selector.startswith("//") or selector.startswith("/html"):
+                by_method = By.XPATH
+            else:
+                by_method = By.CSS_SELECTOR
+            
+            start_time = time.time()
+            last_text = initial_text
+            
+            while time.time() - start_time < timeout:
+                try:
+                    elem = self.driver.find_element(by_method, selector)
+                    current_text = elem.text.strip()
+                    
+                    # If checking for percentage completion (text contains %)
+                    if "%" in current_text:
+                        print(f"   📊 Progress: {current_text}")
+                        last_text = current_text
+                        time.sleep(2)  # Check every 2 seconds
+                        continue
+                    
+                    # If we get here, text no longer contains % - processing might be done
+                    if last_text and "%" in last_text and "%" not in current_text:
+                        print(f"   ✅ Text changed from '{last_text}' to '{current_text}'")
+                        time.sleep(2)  # Wait a bit more for stability
+                        return self._get_action_result("wait_text", f"Text changed to: {current_text}", {
+                            "previous_text": last_text,
+                            "current_text": current_text
+                        })
+                    
+                    last_text = current_text
+                    time.sleep(2)
+                    
+                except NoSuchElementException:
+                    time.sleep(1)
+                    continue
+            
+            return {
+                "success": False,
+                "error": f"Text did not change within {timeout} seconds",
+                "last_text": last_text
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
     def _scroll_to_element(self, element):
         """Scroll element into view"""
         self.driver.execute_script(
