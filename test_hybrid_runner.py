@@ -1,14 +1,19 @@
 """
-Test Script: LangGraph Agent - Full Grok Video Creation Workflow
+Test Script: Hybrid Runner - Fast Script with AI Fallback
 """
 from pathlib import Path
-from langgraph_agent import LangGraphAgent
+from hybrid_runner import HybridRunner
 
 
 def main():
-    """Test the LangGraph agent with full video creation workflow"""
+    """Test the hybrid runner"""
     print("\n" + "="*60)
-    print("🧪 TEST: LangGraph Agent - Full Grok Video Workflow")
+    print("🧪 TEST: Hybrid Workflow Runner")
+    print("="*60)
+    print("💡 This will:")
+    print("   1. Try to run recorded script (fast, no AI tokens)")
+    print("   2. Fall back to AI agent if script fails")
+    print("   3. Record successful workflows for future use")
     print("="*60)
     
     # Create screenshots directory
@@ -24,10 +29,10 @@ def main():
         print("   Please place a test image in the project root.")
         return
     
-    print(f"📸 Using test image: {test_image}")
+    print(f"\n📸 Using test image: {test_image}")
     
-    # Initialize agent with workflow recording enabled
-    agent = LangGraphAgent(record_workflow=True, workflow_name="grok_video_workflow")
+    # Initialize hybrid runner
+    runner = HybridRunner(workflow_name="grok_video_workflow")
     
     try:
         # Full workflow task
@@ -41,10 +46,10 @@ def main():
 The goal is achieved when the video has been downloaded or the download button has been clicked AFTER video processing is complete.
 """
         
-        success = agent.run(
+        success = runner.run(
             task=task,
             initial_url="https://grok.com",
-            max_iterations=30  # Increased for full workflow
+            max_iterations=30
         )
         
         if success:
@@ -56,16 +61,10 @@ The goal is achieved when the video has been downloaded or the download button h
             print("⚠️  TEST INCOMPLETE")
             print("="*60)
         
-        # Interactive mode to inspect results
-        agent.interactive_mode()
-        
     except Exception as e:
         print(f"\n❌ Test error: {e}")
         import traceback
         traceback.print_exc()
-    
-    finally:
-        agent.cleanup()
 
 
 if __name__ == "__main__":

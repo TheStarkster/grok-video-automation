@@ -39,7 +39,7 @@ class AgentState(TypedDict):
 class LangGraphAgent:
     """LangGraph-based agent for browser automation"""
     
-    def __init__(self):
+    def __init__(self, record_workflow: bool = False, workflow_name: str = "grok_video_workflow"):
         """Initialize the agent"""
         # Azure OpenAI setup
         self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "https://primary-az-ai-foundary.cognitiveservices.azure.com/")
@@ -59,11 +59,20 @@ class LangGraphAgent:
         # Browser
         self.browser = DOMBrowser()
         
+        # Workflow recording
+        self.record_workflow = record_workflow
+        self.workflow_name = workflow_name
+        self.last_action_history = []
+        self.last_task = ""
+        self.last_success = False
+        
         # Build the graph
         self.graph = self._build_graph()
         
         print(f"🤖 LangGraph Agent initialized")
         print(f"   Model: {self.deployment}")
+        if self.record_workflow:
+            print(f"   📹 Workflow recording: ENABLED")
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph state graph"""
@@ -464,6 +473,11 @@ What is your next action? Analyze the page and call one tool."""
             # Run the graph
             final_state = self.graph.invoke(initial_state)
             
+            # Save execution results
+            self.last_action_history = final_state['action_history']
+            self.last_task = task
+            self.last_success = final_state['goal_achieved']
+            
             # Print summary
             print("\n" + "="*60)
             print("📊 EXECUTION SUMMARY")
@@ -478,6 +492,10 @@ What is your next action? Analyze the page and call one tool."""
                     status = "✅" if action['result'].get('success') else "❌"
                     print(f"      {status} {action['tool_call']}")
             
+            # Record workflow if enabled and successful
+            if self.record_workflow and final_state['goal_achieved']:
+                self._save_workflow(final_state['action_history'], task)
+            
             return final_state['goal_achieved']
             
         except KeyboardInterrupt:
@@ -488,6 +506,23 @@ What is your next action? Analyze the page and call one tool."""
             import traceback
             traceback.print_exc()
             return False
+    
+    def _save_workflow(self, action_history: List[Dict], task: str):
+        """Save successful workflow for future reuse"""
+        try:
+            from workflow_recorder import WorkflowRecorder
+            recorder = WorkflowRecorder(self.workflow_name)
+            recorder.save_workflow(action_history, task, True)
+        except Exception as e:
+            print(f"⚠️  Failed to save workflow: {e}")
+    
+    def get_last_execution(self) -> Dict:
+        """Get results from last execution"""
+        return {
+            "action_history": self.last_action_history,
+            "task": self.last_task,
+            "success": self.last_success
+        }
     
     def interactive_mode(self):
         """Keep browser open for inspection"""
