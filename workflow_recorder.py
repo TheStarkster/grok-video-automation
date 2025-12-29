@@ -48,6 +48,18 @@ class WorkflowRecorder:
         # Generate script
         self._generate_script(workflow_data)
     
+    def _escape_string(self, value: str) -> str:
+        """Properly escape a string for Python code generation"""
+        # If string contains single quotes, use double quotes for outer string
+        if "'" in value and '"' not in value:
+            return f'"{value}"'
+        # If string contains double quotes, use single quotes and escape
+        elif '"' in value:
+            return f"'{value.replace(chr(39), chr(92) + chr(39))}'"
+        # Default: use single quotes
+        else:
+            return f"'{value}'"
+    
     def _generate_script(self, workflow_data: Dict):
         """Generate a standalone Python script from workflow data"""
         steps = workflow_data['steps']
@@ -59,21 +71,48 @@ Created: {workflow_data['created_at']}
 Task: {workflow_data['task'][:100]}...
 """
 import time
+import sys
 from pathlib import Path
+
+# Add parent directory to path so we can import dom_browser
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from dom_browser import DOMBrowser
 
 
-def run_workflow(initial_url: str = "https://grok.com", headless: bool = False) -> bool:
+def run_workflow(
+    prompt: str = "make it spin slowly",
+    image_path: str = "./test_image.jpg",
+    initial_url: str = "https://grok.com",
+    headless: bool = False
+) -> str:
     """
     Run the recorded workflow without AI
-    Returns True if successful, False if failed
+    
+    Args:
+        prompt: The text prompt for video generation
+        image_path: Path to the image file to upload
+        initial_url: Starting URL (default: https://grok.com)
+        headless: Run browser in headless mode
+    
+    Returns:
+        Path to downloaded video file, or None if failed
     """
     print("\\n" + "="*60)
     print("🤖 RECORDED WORKFLOW EXECUTION")
     print("="*60)
     print(f"📋 Workflow: {workflow_data['name']}")
     print(f"🔄 Steps: {len(steps)}")
+    print(f"📝 Prompt: {{prompt}}")
+    print(f"📸 Image: {{image_path}}")
     print("="*60)
+    
+    # Track downloads folder to find new video
+    downloads_dir = Path(__file__).parent.parent / "grok_downloads"
+    downloads_dir.mkdir(exist_ok=True)
+    
+    # Get existing videos before workflow
+    existing_videos = set(downloads_dir.glob("*.mp4"))
     
     browser = DOMBrowser()
     
@@ -81,14 +120,14 @@ def run_workflow(initial_url: str = "https://grok.com", headless: bool = False) 
         # Start browser
         if not browser.start():
             print("❌ Failed to start browser")
-            return False
+            return None
         
         # Navigate to initial URL
         print(f"\\n🌐 Navigating to: {{initial_url}}")
         browser.navigate(initial_url)
         time.sleep(2)
         
-        # Execute recorded steps
+        # Execute recorded steps (with parameter substitution)
 '''
         
         # Add each step
@@ -98,44 +137,42 @@ def run_workflow(initial_url: str = "https://grok.com", headless: bool = False) 
             script_content += f"        print(f'\\n⚡ Step {i}/{len(steps)}: {tool}')\n"
             
             if tool == 'click_by_text':
-                text = step.get('text', '')
-                element_type = step.get('element_type', 'any')
-                script_content += f"        result = browser.click_element_by_text('{text}', '{element_type}')\n"
+                text = self._escape_string(step.get('text', ''))
+                element_type = self._escape_string(step.get('element_type', 'any'))
+                script_content += f"        result = browser.click_element_by_text({text}, {element_type})\n"
             
             elif tool == 'click_by_selector':
-                selector = step.get('selector', '')
-                script_content += f"        result = browser.click_element_by_selector('{selector}')\n"
+                selector = self._escape_string(step.get('selector', ''))
+                script_content += f"        result = browser.click_element_by_selector({selector})\n"
             
             elif tool == 'click_by_aria_label':
-                aria_label = step.get('aria_label', '')
-                script_content += f"        result = browser.click_element_by_aria_label('{aria_label}')\n"
+                aria_label = self._escape_string(step.get('aria_label', ''))
+                script_content += f"        result = browser.click_element_by_aria_label({aria_label})\n"
             
             elif tool == 'upload_file':
-                selector = step.get('selector', 'auto')
-                file_path = step.get('file_path', '')
-                script_content += f"        result = browser.upload_file('{selector}', '{file_path}')\n"
+                selector = self._escape_string(step.get('selector', 'auto'))
+                # Use image_path parameter instead of hardcoded path
+                script_content += f"        result = browser.upload_file({selector}, image_path)\n"
             
             elif tool == 'type_text':
-                selector = step.get('selector', '')
-                text = step.get('text', '')
-                # Escape quotes in text
-                text = text.replace("'", "\\'")
-                script_content += f"        result = browser.type_into_element('{selector}', '{text}')\n"
+                selector = self._escape_string(step.get('selector', ''))
+                # Use prompt parameter instead of hardcoded text
+                script_content += f"        result = browser.type_into_element({selector}, prompt)\n"
             
             elif tool == 'wait_for_text_change':
-                selector = step.get('selector', '')
+                selector = self._escape_string(step.get('selector', ''))
                 timeout = step.get('timeout', 120)
-                script_content += f"        result = browser.wait_for_text_change('{selector}', timeout={timeout})\n"
+                script_content += f"        result = browser.wait_for_text_change({selector}, timeout={timeout})\n"
             
             elif tool == 'wait_for_element':
-                selector = step.get('selector', '')
+                selector = self._escape_string(step.get('selector', ''))
                 timeout = step.get('timeout', 30)
-                condition = step.get('condition', 'visible')
-                script_content += f"        result = browser.wait_for_element('{selector}', timeout={timeout}, condition='{condition}')\n"
+                condition = self._escape_string(step.get('condition', 'visible'))
+                script_content += f"        result = browser.wait_for_element({selector}, timeout={timeout}, condition={condition})\n"
             
             elif tool == 'scroll':
-                direction = step.get('direction', 'down')
-                script_content += f"        result = browser.scroll_page('{direction}')\n"
+                direction = self._escape_string(step.get('direction', 'down'))
+                script_content += f"        result = browser.scroll_page({direction})\n"
             
             elif tool == 'press_enter':
                 script_content += f"        result = browser.press_enter()\n"
@@ -148,39 +185,64 @@ def run_workflow(initial_url: str = "https://grok.com", headless: bool = False) 
         time.sleep(1)
 """
         
-        # Add completion check
+        # Add completion check and video detection
         script_content += '''
         # Verify workflow completion
         print("\\n✅ Workflow completed successfully!")
         
-        # Keep browser open for verification
-        print("\\n🎮 Browser will stay open for 5 seconds for verification...")
+        # Wait for download to complete
+        print("\\n⏳ Waiting for video download...")
         time.sleep(5)
         
-        return True
+        # Find the new video
+        current_videos = set(downloads_dir.glob("*.mp4"))
+        new_videos = current_videos - existing_videos
+        
+        if new_videos:
+            video_path = sorted(new_videos, key=lambda p: p.stat().st_mtime)[-1]
+            print(f"\\n📹 Video downloaded: {video_path.name}")
+            return str(video_path)
+        else:
+            print("\\n⚠️  Warning: No new video found in downloads folder")
+            # Return latest video if any
+            all_videos = list(downloads_dir.glob("*.mp4"))
+            if all_videos:
+                video_path = sorted(all_videos, key=lambda p: p.stat().st_mtime)[-1]
+                print(f"📹 Returning latest video: {video_path.name}")
+                return str(video_path)
+            return None
         
     except Exception as e:
         print(f"\\n❌ Error during workflow execution: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return None
     
     finally:
         browser.quit()
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
     
-    # Check if we should run in headless mode
-    headless = "--headless" in sys.argv
+    parser = argparse.ArgumentParser(description="Run Grok video workflow")
+    parser.add_argument("--prompt", default="make it spin slowly", help="Video generation prompt")
+    parser.add_argument("--image", default="./test_image.jpg", help="Path to image file")
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     
-    success = run_workflow(headless=headless)
+    args = parser.parse_args()
     
-    if success:
+    video_path = run_workflow(
+        prompt=args.prompt,
+        image_path=args.image,
+        headless=args.headless
+    )
+    
+    if video_path:
         print("\\n" + "="*60)
         print("✅ WORKFLOW COMPLETED SUCCESSFULLY")
         print("="*60)
+        print(f"📹 Video: {video_path}")
         sys.exit(0)
     else:
         print("\\n" + "="*60)

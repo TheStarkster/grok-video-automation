@@ -99,7 +99,7 @@ class HybridRunner:
         print("🤖 AI AGENT MODE")
         print("="*60)
         
-        agent = LangGraphAgent()
+        agent = LangGraphAgent(record_workflow=True, workflow_name=self.workflow_name)
         
         try:
             success = agent.run(
@@ -109,11 +109,10 @@ class HybridRunner:
             )
             
             if success:
-                # Get the action history from the final state
-                # We need to access this from the agent's last execution
-                print("\n💾 Saving successful workflow for future use...")
-                # Note: We'll need to modify LangGraphAgent to expose action history
-                # For now, we'll create a method to get it
+                print("\n✅ Workflow recorded successfully!")
+                print(f"   📄 JSON: {self.recorder.workflow_file}")
+                print(f"   🐍 Script: {self.recorder.script_file}")
+                print(f"\n💡 Next run will use the recorded script (no AI tokens!)")
                 
                 return True
             else:

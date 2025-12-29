@@ -504,10 +504,12 @@ class DOMBrowser:
             
             start_time = time.time()
             last_text = initial_text
+            elem_found_once = False
             
             while time.time() - start_time < timeout:
                 try:
                     elem = self.driver.find_element(by_method, selector)
+                    elem_found_once = True
                     current_text = elem.text.strip()
                     
                     # If checking for percentage completion (text contains %)
@@ -530,6 +532,12 @@ class DOMBrowser:
                     time.sleep(2)
                     
                 except NoSuchElementException:
+                    # If selector not found, try to find any button with percentage
+                    if not elem_found_once:
+                        print(f"   ⚠️  Selector not found, trying generic percentage button...")
+                        result = self._wait_for_percentage_generic(timeout - (time.time() - start_time))
+                        if result.get('success'):
+                            return result
                     time.sleep(1)
                     continue
             
@@ -539,6 +547,54 @@ class DOMBrowser:
                 "last_text": last_text
             }
             
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _wait_for_percentage_generic(self, timeout: int = 120) -> Dict[str, Any]:
+        """Wait for any button with percentage text to complete (fallback for dynamic selectors)"""
+        try:
+            print(f"   🔍 Looking for any button with percentage...")
+            start_time = time.time()
+            last_text = None
+            
+            while time.time() - start_time < timeout:
+                try:
+                    # Find all buttons on the page
+                    buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                    
+                    for button in buttons:
+                        text = button.text.strip()
+                        if "%" in text:
+                            print(f"   📊 Progress: {text}")
+                            last_text = text
+                            time.sleep(2)
+                            break
+                    else:
+                        # No button with % found - might be done!
+                        if last_text and "%" in last_text:
+                            print(f"   ✅ Processing complete (no more percentage buttons)")
+                            time.sleep(2)
+                            return self._get_action_result("wait_text", "Processing complete", {
+                                "previous_text": last_text,
+                                "current_text": "Complete"
+                            })
+                    
+                    time.sleep(2)
+                    
+                except Exception:
+                    time.sleep(1)
+                    continue
+            
+            return {
+                "success": False,
+                "error": f"Percentage did not complete within {timeout} seconds",
+                "last_text": last_text
+            }
+            
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             return {"success": False, "error": str(e)}
     
